@@ -16,6 +16,9 @@ _LDFLAGS = -shared -lm -pthread -lrt -ljansson -lopus -lasound -lspeexdsp $(shel
 _SRCS = $(shell ls src/uslibs/*.c src/*.c)
 
 _BUILD = build
+ifneq ($(MK_WITH_VIM4),)
+override _CFLAGS += -DWITH_VIM4
+endif
 
 
 # =====

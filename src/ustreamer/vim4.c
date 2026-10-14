@@ -8,6 +8,7 @@
 #include "stream.h"
 #include "../libs/logging.h"
 #include "../libs/process.h"
+#include "../libs/vim4codec.h"
 
 static uint _input_rate(void) {
 	char *text = NULL;
@@ -48,7 +49,7 @@ static bool _publish_sample(us_stream_s *stream, GstElement *sink, bool h264) {
 		us_frame_s frame = {
 			.data = map.data, .used = map.size,
 			.width = width, .height = height,
-			.format = h264 ? V4L2_PIX_FMT_H264 : V4L2_PIX_FMT_JPEG,
+			.format = h264 ? (us_vim4_h265() ? V4L2_PIX_FMT_HEVC : V4L2_PIX_FMT_H264) : V4L2_PIX_FMT_JPEG,
 			.online = true, .key = !GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT),
 			.gop = stream->h264_gop,
 			.grab_begin_ts = now, .grab_end_ts = now,
@@ -81,12 +82,17 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
 			output_rate, stream->cap->jpeg_quality,
-			stream->h264_sink ?
+			!stream->h264_sink ? "" : us_vim4_h265() ?
+			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
+			"amlvenc name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
+			"video/x-h265 ! h265parse config-interval=-1 ! "
+			"video/x-h265,stream-format=byte-stream,alignment=au ! "
+			"appsink name=h264 sync=false max-buffers=2" :
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
 			"amlvenc name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
 			"video/x-h264 ! h264parse config-interval=-1 ! "
 			"video/x-h264,stream-format=byte-stream,alignment=au ! "
-			"appsink name=h264 sync=false max-buffers=2" : "");
+			"appsink name=h264 sync=false max-buffers=2");
 		GError *error = NULL;
 		GstElement *pipeline = gst_parse_launch(description, &error);
 		g_free(description);

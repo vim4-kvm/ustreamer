@@ -31,6 +31,7 @@
 typedef struct {
 	us_rtp_s			*rtp;
 	us_rtp_callback_f	callback;
+	bool                hevc;
 } us_rtpv_s;
 
 

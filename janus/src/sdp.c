@@ -28,6 +28,7 @@
 
 #include "uslibs/types.h"
 #include "uslibs/tools.h"
+#include "../../src/libs/vim4codec.h"
 
 #include "rtp.h"
 #include "rtpv.h"
@@ -44,8 +45,8 @@ char *us_sdp_create(u32 video_ssrc, u32 audio_ssrc, bool acap, bool aplay, bool 
 			video_sdp,
 			"m=video 1 RTP/SAVPF %u" RN
 			"c=IN IP4 0.0.0.0" RN
-			"a=rtpmap:%u H264/90000" RN
-			"a=fmtp:%u profile-level-id=42E01F;packetization-mode=1" RN
+			"a=rtpmap:%u %s/90000" RN
+			"a=fmtp:%u %s" RN
 			"a=rtcp-fb:%u ccm fir" RN
 			"a=rtcp-fb:%u nack" RN
 			"a=rtcp-fb:%u nack pli" RN
@@ -57,7 +58,9 @@ char *us_sdp_create(u32 video_ssrc, u32 audio_ssrc, bool acap, bool aplay, bool 
 			"a=extmap:2/sendonly http://www.webrtc.org/experiments/rtp-hdrext/playout-delay" RN
 			"a=extmap:3/sendonly http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time" RN
 			"a=%s" RN,
-			pl, pl, pl, pl, pl, pl, pl,
+			pl, pl, us_vim4_h265() ? "H265" : "H264",
+			pl, us_vim4_h265() ? "profile-id=1;tier-flag=0;level-id=153;tx-mode=SRST" : "profile-level-id=42E01F;packetization-mode=1",
+			pl, pl, pl, pl,
 			video_ssrc,
 			(vplay ? "sendrecv" : "sendonly"));
 	}

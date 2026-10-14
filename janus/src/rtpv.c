@@ -61,7 +61,8 @@ void us_rtpv_destroy(us_rtpv_s *rtpv) {
 #define _PRE 3 // Annex B prefix length
 
 void us_rtpv_wrap(us_rtpv_s *rtpv, const us_frame_s *frame, bool zero_playout_delay) {
-	US_A(frame->format == V4L2_PIX_FMT_H264);
+	US_A(frame->format == V4L2_PIX_FMT_H264 || frame->format == V4L2_PIX_FMT_HEVC);
+	rtpv->hevc = (frame->format == V4L2_PIX_FMT_HEVC);
 
 	if (frame->used <= _PRE) {
 		return;
@@ -161,14 +162,16 @@ static void _rtpv_process_nalu_big(us_rtpv_s *rtpv, const u8 *data, uz size, u32
 	US_A(!_is_nalu_small(size));
 
 	const uint ref_idc = (data[0] >> 5) & 3;
-	const uint type = data[0] & 0x1F;
+	const uint type = rtpv->hevc ? (data[0] >> 1) & 0x3F : data[0] & 0x1F;
 	us_rtp_s *rtp = rtpv->rtp;
 	u8 *dg = rtp->datagram;
 
-	const uz fu_overhead = US_RTP_HEADER_SIZE + 2; // FU-A overhead
+	// RFC 7798 section 4.4.3: two-byte HEVC payload header plus FU header;
+	// SRST with no decoding-order reordering does not carry DONL.
+	const uz fu_overhead = US_RTP_HEADER_SIZE + (rtpv->hevc ? 3 : 2);
 
-	const u8 *src = data + 1;
-	sz remaining = size - 1;
+	const u8 *src = data + (rtpv->hevc ? 2 : 1);
+	sz remaining = size - (rtpv->hevc ? 2 : 1);
 
 	bool first = true;
 	while (remaining > 0) {
@@ -180,7 +183,8 @@ static void _rtpv_process_nalu_big(us_rtpv_s *rtpv, const u8 *data, uz size, u32
 
 		us_rtp_write_header(rtp, pts, (last_nalu && last));
 
-		dg[US_RTP_HEADER_SIZE] = 28 | (ref_idc << 5);
+		dg[US_RTP_HEADER_SIZE] = rtpv->hevc ? (data[0] & 0x81) | (49 << 1) : 28 | (ref_idc << 5);
+		if (rtpv->hevc) dg[US_RTP_HEADER_SIZE + 1] = data[1];
 
 		u8 fu = type;
 		if (first) {
@@ -189,7 +193,7 @@ static void _rtpv_process_nalu_big(us_rtpv_s *rtpv, const u8 *data, uz size, u32
 		if (last) {
 			fu |= 0x40;
 		}
-		dg[US_RTP_HEADER_SIZE + 1] = fu;
+		dg[US_RTP_HEADER_SIZE + (rtpv->hevc ? 2 : 1)] = fu;
 
 		memcpy(dg + fu_overhead, src, frag_size);
 		rtp->used = fu_overhead + frag_size;

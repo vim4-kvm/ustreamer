@@ -20,3 +20,10 @@ unchanging pixels do not imply a stalled capture.
 Only one KVM application may own capture and encoding. Run through the workspace
 PiKVM service, which provides plugin paths and coordinates application switching.
 Actual hardware verification is recorded in the workspace bringup log.
+
+The VIM4 build accepts `VIM4_VIDEO_CODEC=h265` in the shared service environment.
+Capture uses amlvenc HEVC and h265parse; Janus advertises HEVC Main and sends
+RFC 7798 single NAL units or fragmentation units, preserving layer and temporal
+IDs. The existing compressed-video memsink retains its `::h264` name for API
+compatibility; each frame carries its actual fourcc. H.264 remains the default.
+`janus/test-rtpv.c` checks packet-size boundaries and reassembly for both codecs.

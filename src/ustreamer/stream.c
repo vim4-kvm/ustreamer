@@ -751,7 +751,7 @@ static void _stream_expose_raw(us_stream_s *stream, const us_frame_s *frame) {
 
 #ifdef WITH_VIM4
 void us_stream_vim4_publish(us_stream_s *stream, const us_frame_s *frame) {
-	if (frame->format == V4L2_PIX_FMT_H264) {
+	if (frame->format == V4L2_PIX_FMT_H264 || frame->format == V4L2_PIX_FMT_HEVC) {
 		us_memsink_wants_s wants = {0};
 		us_fpsi_meta_s meta = {.online = frame->online};
 		if (stream->h264_sink != NULL) {
