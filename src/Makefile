@@ -60,6 +60,11 @@ ifneq ($(MK_WITH_JANUS),)
 override _CFLAGS += -DMK_WITH_JANUS
 endif
 
+ifneq ($(MK_WITH_VIM4),)
+override _CFLAGS += -DWITH_VIM4 $(shell $(PKG_CONFIG) --cflags gstreamer-app-1.0 gstreamer-video-1.0)
+override _USTR_LDFLAGS += $(shell $(PKG_CONFIG) --libs gstreamer-app-1.0 gstreamer-video-1.0)
+endif
+
 ifneq ($(MK_WITH_GPIO),)
 override _CFLAGS += -DMK_WITH_GPIO -DWITH_GPIO $(shell $(PKG_CONFIG) --atleast-version=2 libgpiod 2> /dev/null && echo -DHAVE_GPIOD2)
 override _USTR_LDFLAGS += -lgpiod

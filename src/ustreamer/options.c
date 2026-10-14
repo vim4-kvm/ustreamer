@@ -522,7 +522,12 @@ int us_options_parse(
 			ADD_SINK("raw", raw_sink, RAW_SINK)
 			ADD_SINK("h264", h264_sink, H264_SINK)
 #			undef ADD_SINK
-			case _O_H264_BITRATE:			OPT_NUMBER("--h264-bitrate", stream->h264_bitrate, 25, 20000, 0);
+			case _O_H264_BITRATE:
+#ifdef WITH_VIM4
+				OPT_NUMBER("--h264-bitrate", stream->h264_bitrate, 1000, 60000, 0);
+#else
+				OPT_NUMBER("--h264-bitrate", stream->h264_bitrate, 25, 20000, 0);
+#endif
 			case _O_H264_GOP:				OPT_NUMBER("--h264-gop", stream->h264_gop, 0, 60, 0);
 			case _O_H264_M2M_DEVICE:		OPT_SET(stream->h264_m2m_path, optarg);
 			case _O_H264_BOOST:				OPT_SET(stream->h264_boost, true);

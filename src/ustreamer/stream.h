@@ -113,3 +113,8 @@ void us_stream_destroy(us_stream_s *stream);
 
 void us_stream_loop(us_stream_s *stream);
 void us_stream_loop_break(us_stream_s *stream);
+
+#ifdef WITH_VIM4
+void us_stream_vim4_loop(us_stream_s *stream);
+void us_stream_vim4_publish(us_stream_s *stream, const us_frame_s *frame);
+#endif

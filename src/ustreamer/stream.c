@@ -151,6 +151,10 @@ void us_stream_destroy(us_stream_s *stream) {
 }
 
 void us_stream_loop(us_stream_s *stream) {
+#ifdef WITH_VIM4
+	us_stream_vim4_loop(stream);
+	return;
+#endif
 	us_stream_runtime_s *const run = stream->run;
 	us_capture_s *const cap = stream->cap;
 
@@ -744,6 +748,26 @@ static void _stream_expose_raw(us_stream_s *stream, const us_frame_s *frame) {
 		us_memsink_server_put(stream->raw_sink, frame, NULL);
 	}
 }
+
+#ifdef WITH_VIM4
+void us_stream_vim4_publish(us_stream_s *stream, const us_frame_s *frame) {
+	if (frame->format == V4L2_PIX_FMT_H264) {
+		us_memsink_wants_s wants = {0};
+		us_fpsi_meta_s meta = {.online = frame->online};
+		if (stream->h264_sink != NULL) {
+			us_memsink_server_put(stream->h264_sink, frame, &wants);
+			stream->run->h264_key_requested |= wants.key;
+		}
+		us_fpsi_update(stream->run->http->h264_fpsi, frame->online, &meta);
+		_stream_update_captured_fpsi(stream, frame, frame->online);
+	} else {
+		_stream_expose_jpeg(stream, frame);
+		if (stream->h264_sink == NULL || !frame->online) {
+			_stream_update_captured_fpsi(stream, frame, frame->online);
+		}
+	}
+}
+#endif
 
 static void _stream_encode_expose_h264(us_stream_s *stream, const us_frame_s *frame, bool force_key) {
 	if (stream->h264_sink == NULL) {
