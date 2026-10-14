@@ -16,6 +16,9 @@ caps. The H.264 bitrate range is 1000–60000 kbps. JPEG quality uses the existi
 `--quality` option. The backend does not change EDID, HPD or the board HDMI service.
 Capture errors or missing frames restart the pipeline after releasing its buffers;
 unchanging pixels do not imply a stalled capture.
+HDMI's centi-Hz measurement can briefly range from 5987 to 5999 on the same
+60 Hz input. A rate change must exceed 1 Hz and persist for two polls before
+rebuilding the pipeline; isolated zero readings do not interrupt live frames.
 
 Only one KVM application may own capture and encoding. Run through the workspace
 PiKVM service, which provides plugin paths and coordinates application switching.

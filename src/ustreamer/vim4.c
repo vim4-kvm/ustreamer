@@ -113,6 +113,8 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		bool playing = gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE;
 		ldf last_frame = us_get_now_monotonic();
 		ldf last_rate_check = last_frame;
+		uint pending_rate = input_rate;
+		uint rate_change_count = 0;
 		while (playing && !atomic_load(&stream->run->stop)) {
 			bool received = _publish_sample(stream, jpeg, false);
 			if (h264 != NULL) received |= _publish_sample(stream, h264, true);
@@ -134,13 +136,25 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 				break;
 			}
 			// Frame arrival, never pixel changes, determines capture liveness.
-			if (us_get_now_monotonic() - last_frame > 3) break;
+			if (us_get_now_monotonic() - last_frame > 3) {
+				US_LOG_ERROR("VIM4 capture: no frames for 3 seconds; restarting");
+				break;
+			}
 			if (us_get_now_monotonic() - last_rate_check > 1) {
 				last_rate_check = us_get_now_monotonic();
-				// HDMI's measured centi-Hz value jitters on a stable input.
-				// Rebuild only for loss of signal or a meaningful rate change.
+				// HDMI's measured centi-Hz value can briefly jump even while
+				// frames arrive normally. Require two stable, materially different
+				// readings before disrupting capture; the watchdog handles stalls.
 				const uint next_rate = _input_rate();
-				if (!next_rate || abs((int)next_rate - (int)input_rate) > 10) break;
+				if (!next_rate || abs((int)next_rate - (int)input_rate) > 100) {
+					if (abs((int)next_rate - (int)pending_rate) <= 10) ++rate_change_count;
+					else rate_change_count = 1;
+					pending_rate = next_rate;
+					if (rate_change_count >= 2) {
+						US_LOG_INFO("VIM4 input rate changed: %u -> %u centi-Hz; restarting", input_rate, next_rate);
+						break;
+					}
+				} else rate_change_count = 0;
 			}
 		}
 		gst_element_set_state(pipeline, GST_STATE_NULL);
