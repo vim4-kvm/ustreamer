@@ -1,0 +1,48 @@
+name: VIM4 release
+
+# uStreamer ships inside the PiKVM package. Pull requests build and verify
+# that package; releases are published from vim4-kvm/kvmd after pinning.
+on:
+  push:
+    branches: [vim4]
+    tags: ['release-*']
+  pull_request:
+    branches: [vim4]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish source release after PiKVM verification
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: vim4-kvm/vim4-kvm/.github/workflows/release-component.yml@main
+    permissions:
+      contents: write
+    with:
+      component: pikvm
+      repository: ustreamer
+  source-release:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/release-') || inputs.publish == true
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Publish verified source archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="vim4-$GITHUB_RUN_NUMBER"
+          git archive --format=tar.gz --prefix="ustreamer-$version/" -o "ustreamer-$version.tar.gz" HEAD
+          sha256sum "ustreamer-$version.tar.gz" > SHA256SUMS
+          gh release create "$version" --target "$GITHUB_SHA" --title "$version" \
+            --notes 'Source release verified as part of the PiKVM package. Update the workspace uStreamer pin and release kvmd to deliver this version to boards.' \
+            "ustreamer-$version.tar.gz" SHA256SUMS
