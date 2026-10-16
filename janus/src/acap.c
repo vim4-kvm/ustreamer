@@ -83,7 +83,14 @@ us_acap_s *us_acap_init(const char *name, uint pcm_hz) {
 		}
 		acap->pcm_frames = US_AU_HZ_TO_FRAMES(acap->pcm_hz);
 		acap->pcm_size = US_AU_HZ_TO_BUF8(acap->pcm_hz);
+		// Driver defaults on VIM4 TDM (241-frame period, 65536-frame buffer) repeat
+		// the previous lap's first 16 frames at every wrap: an audible pop each 1.37s.
+		snd_pcm_uframes_t period = acap->pcm_frames;
+		snd_pcm_uframes_t buffer = acap->pcm_frames * 4;
+		SET_PARAM("Can't set PCM period size",		snd_pcm_hw_params_set_period_size_near, &period, NULL);
+		SET_PARAM("Can't set PCM buffer size",		snd_pcm_hw_params_set_buffer_size_near, &buffer);
 		SET_PARAM("Can't apply PCM params", snd_pcm_hw_params);
+		US_LOG_INFO("PCM period: %lu frames, buffer: %lu frames", period, buffer);
 
 #		undef SET_PARAM
 	}
