@@ -137,7 +137,13 @@ static void *_video_rtp_thread(void *arg) {
 		if (ri >= 0) {
 			const us_frame_s *const frame = _g_video_ring->items[ri];
 			_LOCK_VIDEO;
+#			ifdef WITH_VIM4
+			// Interactive video needs prompt playout even with periodic keyframes.
+			// Janus sends the hint only when the receiver negotiates the extension.
+			const bool zero_playout_delay = true;
+#			else
 			const bool zero_playout_delay = (frame->gop == 0);
+#			endif
 			us_rtpv_wrap(_g_rtpv, frame, zero_playout_delay);
 			_UNLOCK_VIDEO;
 			us_ring_consumer_release(_g_video_ring, ri);

@@ -30,3 +30,10 @@ RFC 7798 single NAL units or fragmentation units, preserving layer and temporal
 IDs. The existing compressed-video memsink retains its `::h264` name for API
 compatibility; each frame carries its actual fourcc. H.264 remains the default.
 `janus/test-rtpv.c` checks packet-size boundaries and reassembly for both codecs.
+
+VIM4 WebRTC requests immediate video playout through the negotiated RTP
+playout-delay extension (min=0/max=0) on the first packet of each frame, for
+both H.264 and H.265 regardless of GOP length. Janus handles the negotiated
+extension ID; receivers without support retain their own playout policy.
+This does not change encoding quality, GOP, audio, Direct playback or non-VIM4
+builds, and does not imply zero capture-to-display latency.
