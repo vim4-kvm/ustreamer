@@ -762,6 +762,11 @@ void us_stream_vim4_publish(us_stream_s *stream, const us_frame_s *frame) {
 		_stream_update_captured_fpsi(stream, frame, frame->online);
 	} else {
 		_stream_expose_jpeg(stream, frame);
+		// Match the normal JPEG worker: a published live frame satisfies one
+		// pending snapshot request instead of leaving HTTP to time out.
+		if (frame->online && atomic_load(&stream->run->http->snapshot_requested) > 0) {
+			atomic_fetch_sub(&stream->run->http->snapshot_requested, 1);
+		}
 		if (stream->h264_sink == NULL || !frame->online) {
 			_stream_update_captured_fpsi(stream, frame, frame->online);
 		}

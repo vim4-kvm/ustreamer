@@ -37,3 +37,7 @@ both H.264 and H.265 regardless of GOP length. Janus handles the negotiated
 extension ID; receivers without support retain their own playout policy.
 This does not change encoding quality, GOP, audio, Direct playback or non-VIM4
 builds, and does not imply zero capture-to-display latency.
+
+Publishing a live JPEG frame completes a pending HTTP snapshot request, matching
+the normal JPEG worker. This avoids waiting for the HTTP fallback timeout despite
+fresh frames being available; offline frames still follow the existing timeout.
