@@ -10,6 +10,11 @@ enter the upstream JPEG HTTP ring and JPEG/H.264 memsinks, so kvmd and the Janus
 plugin retain their established interfaces. Keyframe requests from memsink
 consumers become GStreamer force-key-unit events.
 
+With `VIM4_VIDEO_BACKEND=wave5`, the common launcher selects `vim4v4l2src` and
+`vim4wave5enc` from the mainline-only plugin directory. The JPEG/memsink/Janus
+interfaces stay the same. Install the matched board runtime and patched V4L2
+plugin together; these factories are distinct from the 5.15 vendor factories.
+
 Input dimensions follow capture caps. `--desired-fps` limits output without
 duplicating frames; the encoder derives its rate-control budget from negotiated
 caps. The H.264 bitrate range is 1000–60000 kbps. JPEG quality uses the existing

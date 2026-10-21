@@ -11,6 +11,15 @@
 #include "../libs/vim4codec.h"
 
 static uint _input_rate(void) {
+	if (g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0) {
+		GstElement *source = gst_element_factory_make("vim4v4l2src", NULL);
+		gint rate = 0;
+		if (source) {
+			g_object_get(source, "input-rate", &rate, NULL);
+			gst_object_unref(source);
+		}
+		return rate;
+	}
 	char *text = NULL;
 	uint rate = 0;
 	if (g_file_get_contents("/sys/class/hdmirx/hdmirx0/info", &text, NULL, NULL)) {
@@ -75,24 +84,23 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			continue;
 		}
 		const uint output_rate = stream->desired_fps ? MIN(input_rate, stream->desired_fps * 100) : input_rate;
+		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
+		const char *codec = us_vim4_h265() ? "h265" : "h264";
+		char *encoded = stream->h264_sink ? g_strdup_printf(
+			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
+			"%s name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
+			"video/x-%s ! %sparse config-interval=-1 ! "
+			"video/x-%s,stream-format=byte-stream,alignment=au ! "
+			"appsink name=h264 sync=false max-buffers=2",
+			wave5 ? "vim4wave5enc" : "amlvenc", codec, codec, codec) : g_strdup("");
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
 		char *description = g_strdup_printf(
-			"vfmcapsrc ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
+			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
-			output_rate, stream->cap->jpeg_quality,
-			!stream->h264_sink ? "" : us_vim4_h265() ?
-			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
-			"amlvenc name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
-			"video/x-h265 ! h265parse config-interval=-1 ! "
-			"video/x-h265,stream-format=byte-stream,alignment=au ! "
-			"appsink name=h264 sync=false max-buffers=2" :
-			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
-			"amlvenc name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
-			"video/x-h264 ! h264parse config-interval=-1 ! "
-			"video/x-h264,stream-format=byte-stream,alignment=au ! "
-			"appsink name=h264 sync=false max-buffers=2");
+			wave5 ? "vim4v4l2src" : "vfmcapsrc", output_rate, stream->cap->jpeg_quality, encoded);
+		g_free(encoded);
 		GError *error = NULL;
 		GstElement *pipeline = gst_parse_launch(description, &error);
 		g_free(description);
