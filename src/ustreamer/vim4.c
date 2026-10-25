@@ -85,6 +85,7 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		}
 		const uint output_rate = stream->desired_fps ? MIN(input_rate, stream->desired_fps * 100) : input_rate;
 		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
+		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
 		char *encoded = stream->h264_sink ? g_strdup_printf(
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
@@ -99,7 +100,8 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
-			wave5 ? "vim4v4l2src" : "vfmcapsrc", output_rate, stream->cap->jpeg_quality, encoded);
+			wave5 ? "vim4v4l2src" : secondary ? "vim4vdin1src" : "vfmcapsrc",
+			output_rate, stream->cap->jpeg_quality, encoded);
 		g_free(encoded);
 		GError *error = NULL;
 		GstElement *pipeline = gst_parse_launch(description, &error);
