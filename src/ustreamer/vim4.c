@@ -10,6 +10,21 @@
 #include "../libs/process.h"
 #include "../libs/vim4codec.h"
 
+static uint _parse_input_rate(const char *text) {
+	uint rate = 0, capture_rate = 0;
+	bool has_capture_rate = false;
+	char **lines = g_strsplit(text, "\n", -1);
+	for (char **line = lines; *line != NULL; ++line) {
+		if (sscanf(*line, " Capture Frame Rate :%u", &capture_rate) == 1) {
+			has_capture_rate = true;
+		}
+		sscanf(*line, " Frame Rate :%u", &rate);
+	}
+	g_strfreev(lines);
+	if (has_capture_rate) rate = capture_rate;
+	return rate >= 100 && rate <= 12000 ? rate : 0;
+}
+
 static uint _input_rate(void) {
 	if (g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0) {
 		GstElement *source = gst_element_factory_make("vim4v4l2src", NULL);
@@ -23,11 +38,7 @@ static uint _input_rate(void) {
 	char *text = NULL;
 	uint rate = 0;
 	if (g_file_get_contents("/sys/class/hdmirx/hdmirx0/info", &text, NULL, NULL)) {
-		char **lines = g_strsplit(text, "\n", -1);
-		for (char **line = lines; *line != NULL; ++line) {
-			if (sscanf(*line, " Frame Rate :%u", &rate) == 1) break;
-		}
-		g_strfreev(lines);
+		rate = _parse_input_rate(text);
 		g_free(text);
 	}
 	return rate >= 100 && rate <= 12000 ? rate : 0;

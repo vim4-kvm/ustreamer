@@ -24,6 +24,10 @@ unchanging pixels do not imply a stalled capture.
 HDMI's centi-Hz measurement can briefly range from 5987 to 5999 on the same
 60 Hz input. A rate change must exceed 1 Hz and persist for two polls before
 rebuilding the pipeline; isolated zero readings do not interrupt live frames.
+Receivers with `Capture Frame Rate` use that stable base rate for VRR budgets
+and mode-change detection; older kernels keep the measured-rate fallback.
+This does not advertise or qualify VRR. The parser's offline regression runs
+with `python3 tests/test_vim4_rate.py` in a GLib development environment.
 
 Only one KVM application may own capture and encoding. Run through the workspace
 PiKVM service, which provides plugin paths and coordinates application switching.
