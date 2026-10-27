@@ -59,7 +59,7 @@ char *us_sdp_create(u32 video_ssrc, u32 audio_ssrc, bool acap, bool aplay, bool 
 			"a=extmap:3/sendonly http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time" RN
 			"a=%s" RN,
 			pl, pl, us_vim4_h265() ? "H265" : "H264",
-			pl, us_vim4_h265() ? "profile-id=1;tier-flag=0;level-id=153;tx-mode=SRST" : "profile-level-id=42E01F;packetization-mode=1",
+			pl, us_vim4_h265() ? (us_vim4_main10() ? "profile-id=2;tier-flag=0;level-id=180;tx-mode=SRST" : "profile-id=1;tier-flag=0;level-id=153;tx-mode=SRST") : "profile-level-id=42E01F;packetization-mode=1",
 			pl, pl, pl, pl,
 			video_ssrc,
 			(vplay ? "sendrecv" : "sendonly"));

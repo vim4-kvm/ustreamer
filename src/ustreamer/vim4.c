@@ -53,6 +53,17 @@ static void _offline(us_stream_s *stream) {
 	}
 }
 
+static bool _hdr_requested(void) {
+	// Ask the common policy before opening either capture path. In SDR mode
+	// JPEG and HEVC must share one VDIN1 source; two opens cannot own video71.
+	GstElement *source = gst_element_factory_make("vim4h265src", NULL);
+	if (!source) return false;
+	gint requested = 0;
+	g_object_get(source, "hdr-requested", &requested, NULL);
+	gst_object_unref(source);
+	return requested != 0;
+}
+
 static bool _publish_sample(us_stream_s *stream, GstElement *sink, bool h264) {
 	GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), 0);
 	if (sample == NULL) {
@@ -97,14 +108,19 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		const uint output_rate = stream->desired_fps ? MIN(input_rate, stream->desired_fps * 100) : input_rate;
 		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
 		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
+		const bool native_hevc = us_vim4_h265() && us_vim4_main10();
+		const bool shared_hevc = native_hevc && _hdr_requested();
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
-		char *encoded = stream->h264_sink ? g_strdup_printf(
+		char *encoded = !stream->h264_sink ? g_strdup("") : shared_hevc ? g_strdup_printf(
+			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u ! "
+			"appsink name=h264 sync=false max-buffers=2",
+			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100) : g_strdup_printf(
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
 			"%s name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
 			"video/x-%s ! %sparse config-interval=-1 ! "
 			"video/x-%s,stream-format=byte-stream,alignment=au ! "
 			"appsink name=h264 sync=false max-buffers=2",
-			wave5 ? "vim4wave5enc" : "amlvenc", codec, codec, codec) : g_strdup("");
+			wave5 ? "vim4wave5enc" : "amlvenc", codec, codec, codec);
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
 		char *description = g_strdup_printf(
@@ -121,7 +137,6 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			US_LOG_ERROR("VIM4 pipeline: %s", error->message);
 			g_clear_error(&error);
 			if (pipeline != NULL) gst_object_unref(pipeline);
-			us_process_suicide();
 			break;
 		}
 		GstElement *jpeg = gst_bin_get_by_name(GST_BIN(pipeline), "jpeg");
@@ -163,6 +178,10 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			}
 			if (us_get_now_monotonic() - last_rate_check > 1) {
 				last_rate_check = us_get_now_monotonic();
+				if (native_hevc && _hdr_requested() != shared_hevc) {
+					US_LOG_INFO("VIM4 HDR policy changed; rebuilding shared capture");
+					break;
+				}
 				// HDMI's measured centi-Hz value can briefly jump even while
 				// frames arrive normally. Require two stable, materially different
 				// readings before disrupting capture; the watchdog handles stalls.

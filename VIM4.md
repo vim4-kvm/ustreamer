@@ -40,6 +40,19 @@ IDs. The existing compressed-video memsink retains its `::h264` name for API
 compatibility; each frame carries its actual fourcc. H.264 remains the default.
 `janus/test-rtpv.c` checks packet-size boundaries and reassembly for both codecs.
 
+On qualified native-HDR 5.15, H.265 instead uses the shared `vim4h265src` and
+Janus advertises Main10. It follows the manager's global HDR-to-SDR preference:
+PQ can retain Main10/BT.2020, while SDR or converted input uses eight-bit HEVC.
+Only native HDR uses an independent VDIN1 JPEG branch. SDR shares one VDIN1
+capture between JPEG and HEVC because two opens would contend for that device.
+An input/preference change
+releases and rebuilds the pipeline without terminating uStreamer. Deploy the
+encoder package providing `vim4-hevc-hdr-api-1` and the common GPU launcher first.
+PiKVM Direct derives profile/level from SPS and presents HDR via a native video
+track where available. Browsers lacking Main10 negotiation receive a clear
+WebRTC compatibility message; H.264 remains available for SDR. Safari remote
+HDR and HLG remain unqualified.
+
 VIM4 WebRTC requests immediate video playout through the negotiated RTP
 playout-delay extension (min=0/max=0) on the first packet of each frame, for
 both H.264 and H.265 regardless of GOP length. Janus handles the negotiated
