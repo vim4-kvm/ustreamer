@@ -110,25 +110,34 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
 		const bool native_hevc = us_vim4_h265() && us_vim4_main10();
 		const bool shared_hevc = native_hevc && _hdr_requested();
+		const char *height_setting = g_getenv("VIM4_OUTPUT_HEIGHT");
+		const uint height = height_setting ? (uint)g_ascii_strtoull(height_setting, NULL, 10) : 0;
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
+		char *scale = height && !wave5 ? g_strdup_printf("vim4scale height=%u width-alignment=%u ! "
+			"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! ",
+			height, us_vim4_h265() ? 16 : 2) : g_strdup("");
 		char *encoded = !stream->h264_sink ? g_strdup("") : shared_hevc ? g_strdup_printf(
-			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u ! "
+			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u height=%u ! "
 			"appsink name=h264 sync=false max-buffers=2",
-			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100) : g_strdup_printf(
+			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100, height) : g_strdup_printf(
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
-			"%s name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
+			"%s%s name=encoder framerate=0 min-force-key-unit-interval=250000000 ! "
 			"video/x-%s ! %sparse config-interval=-1 ! "
 			"video/x-%s,stream-format=byte-stream,alignment=au ! "
 			"appsink name=h264 sync=false max-buffers=2",
-			wave5 ? "vim4wave5enc" : "amlvenc", codec, codec, codec);
+			scale, wave5 ? "vim4wave5enc" : "amlvenc", codec, codec, codec);
+		g_free(scale);
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
+		char *capture = wave5 ? g_strdup_printf("vim4v4l2src height=%u", height) :
+			g_strdup(secondary ? "vim4vdin1src" : "vfmcapsrc");
 		char *description = g_strdup_printf(
 			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
-			wave5 ? "vim4v4l2src" : secondary ? "vim4vdin1src" : "vfmcapsrc",
+			capture,
 			output_rate, stream->cap->jpeg_quality, encoded);
+		g_free(capture);
 		g_free(encoded);
 		GError *error = NULL;
 		GstElement *pipeline = gst_parse_launch(description, &error);
