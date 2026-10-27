@@ -21,9 +21,17 @@ caps. The H.264 bitrate range is 1000–60000 kbps. JPEG quality uses the existi
 `--quality` option. The backend does not change EDID, HPD or the board HDMI service.
 Capture errors or missing frames restart the pipeline after releasing its buffers;
 unchanging pixels do not imply a stalled capture.
+On vendor 5.15, cached `hw_info` bit 16 establishes RX lock: timing fields in
+`info` can remain stale during loss. Input geometry, color, depth, EOTF and rate
+are checked every 100 ms; two matching changed observations reopen capture.
 HDMI's centi-Hz measurement can briefly range from 5987 to 5999 on the same
-60 Hz input. A rate change must exceed 1 Hz and persist for two polls before
-rebuilding the pipeline; isolated zero readings do not interrupt live frames.
+60 Hz input. A rate change must exceed 1 Hz; isolated loss readings do not
+interrupt live frames. Planned rebuilds retain the transport and skip the
+one-second hardware-failure backoff. Actual missing frames retain the three-second
+watchdog. This reduces application waits but cannot eliminate HDMI resynchronization.
+Before starting vendor encoding, reserve its workspace ahead of JPEG/VDIN1
+allocation and drop the bootstrap after the first encoded frame. Use the matched
+capture plugin's six-buffer physical pool to leave CMA for input reallocation.
 Receivers with `Capture Frame Rate` use that stable base rate for VRR budgets
 and mode-change detection; older kernels keep the measured-rate fallback.
 This does not advertise or qualify VRR. The parser's offline regression runs
