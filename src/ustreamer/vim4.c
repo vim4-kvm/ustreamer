@@ -85,7 +85,7 @@ static bool _vendor_signal_ready(void) {
 
 static input_mode_s _input_mode(void) {
 	if (g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0) {
-		GstElement *source = gst_element_factory_make("vim4v4l2src", NULL);
+		GstElement *source = gst_element_factory_make(g_getenv("VIM4_BROKER_SOCKET") ? "vim4brokersrc" : "vim4v4l2src", NULL);
 		gint rate = 0;
 		if (source) {
 			g_object_get(source, "input-rate", &rate, NULL);
@@ -190,7 +190,8 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		g_free(scale);
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
-		char *capture = wave5 ? g_strdup_printf("vim4v4l2src height=%u", height) :
+		char *capture = wave5 ? g_strdup_printf("%s height=%u",
+			g_getenv("VIM4_BROKER_SOCKET") ? "vim4brokersrc" : "vim4v4l2src", height) :
 			g_strdup(secondary ? "vim4vdin1src" : "vfmcapsrc");
 		char *description = g_strdup_printf(
 			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
