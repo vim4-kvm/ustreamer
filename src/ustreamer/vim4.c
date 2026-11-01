@@ -170,7 +170,9 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
 		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
 		const bool native_hevc = us_vim4_h265() && us_vim4_main10();
-		const bool shared_hevc = native_hevc && (wave5 || _hdr_requested());
+		// Wave5 shares HEVC/JPEG in SDR too; source selection is not HDR policy.
+		const bool hdr_requested = native_hevc && _hdr_requested();
+		const bool shared_hevc = native_hevc && (wave5 || hdr_requested);
 		const char *height_setting = g_getenv("VIM4_OUTPUT_HEIGHT");
 		const uint height = height_setting ? (uint)g_ascii_strtoull(height_setting, NULL, 10) : 0;
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
@@ -265,7 +267,7 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			}
 			if (us_get_now_monotonic() - last_rate_check > 0.1) {
 				last_rate_check = us_get_now_monotonic();
-				if (native_hevc && _hdr_requested() != shared_hevc) {
+				if (native_hevc && _hdr_requested() != hdr_requested) {
 					US_LOG_INFO("VIM4 HDR policy changed; rebuilding shared capture");
 					reconfigure = true;
 					break;
@@ -287,12 +289,13 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		// Keep the last image and the transport during a planned rebuild. A
 		// source transition may have raised a bus error before our next poll.
 		if (reconfigure || !_same_input(input, _input_mode()) ||
-			(native_hevc && _hdr_requested() != shared_hevc)) continue;
+			(native_hevc && _hdr_requested() != hdr_requested)) continue;
 		_offline(stream);
 		offline = true;
 		// Back off genuine failures, but wake early when the source changes.
 		for (uint i = 0; i < 10 && !atomic_load(&stream->run->stop); ++i) {
-			if (!_same_input(input, _input_mode())) break;
+			if (!_same_input(input, _input_mode()) ||
+				(native_hevc && _hdr_requested() != hdr_requested)) break;
 			g_usleep(100000);
 		}
 	}
