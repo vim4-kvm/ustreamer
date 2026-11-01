@@ -170,7 +170,7 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
 		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
 		const bool native_hevc = us_vim4_h265() && us_vim4_main10();
-		const bool shared_hevc = native_hevc && _hdr_requested();
+		const bool shared_hevc = native_hevc && (wave5 || _hdr_requested());
 		const char *height_setting = g_getenv("VIM4_OUTPUT_HEIGHT");
 		const uint height = height_setting ? (uint)g_ascii_strtoull(height_setting, NULL, 10) : 0;
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
@@ -192,7 +192,12 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		// needs explicit output caps to produce valid durations and encoder budgets.
 		char *capture = wave5 ? g_strdup_printf("vim4v4l2src height=%u", height) :
 			g_strdup(secondary ? "vim4vdin1src" : "vfmcapsrc");
-		char *description = g_strdup_printf(
+		char *description = wave5 && shared_hevc ? g_strdup_printf(
+			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u height=%u ! "
+			"appsink name=h264 sync=false max-buffers=2 "
+			"encoder.raw ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+			"vim4pq2sdr ! vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true",
+			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100, height, stream->cap->jpeg_quality) : g_strdup_printf(
 			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",

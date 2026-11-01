@@ -15,6 +15,16 @@ With `VIM4_VIDEO_BACKEND=wave5`, the common launcher selects `vim4v4l2src` and
 interfaces stay the same. Install the matched board runtime and patched V4L2
 plugin together; these factories are distinct from the 5.15 vendor factories.
 
+The P0-5 candidate queries `vim4h265src` for native HDR capability in capture
+and Janus, requiring the GPU tone mapper on Wave5. Native and mapped HEVC then
+share that source's `raw` pad with JPEG: P010/PQ passes through `vim4pq2sdr`,
+while mapped NV12 passes through unchanged. This prevents two capture contexts
+contending for the sole VDIN owner. The raw/JPEG queue is bounded and leaky;
+encoded prediction chains are retained. Janus links GStreamer only for the VIM4
+target to use the same capability contract, not a kernel-name whitelist.
+5.15 keeps its independent VDIN1 JPEG branch. Both GPU stacks and the actual
+PiKVM viewer remain explicit board gates; see the workspace P0-5 record.
+
 Input dimensions follow capture caps. `--desired-fps` limits output without
 duplicating frames; the encoder derives its rate-control budget from negotiated
 caps. The H.264 bitrate range is 1000–60000 kbps. JPEG quality uses the existing
