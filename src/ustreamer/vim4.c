@@ -170,7 +170,10 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		const bool wave5 = g_strcmp0(g_getenv("VIM4_VIDEO_BACKEND"), "wave5") == 0;
 		const bool secondary = g_strcmp0(g_getenv("VIM4_SECONDARY_HDMI_CAPTURE"), "1") == 0;
 		const bool native_hevc = us_vim4_h265() && us_vim4_main10();
-		const bool shared_hevc = native_hevc && _hdr_requested();
+		// Wave5 shares HEVC/JPEG in SDR too; source selection is not HDR policy.
+		const bool hdr_requested = native_hevc && _hdr_requested();
+		const bool broker = wave5 && g_getenv("VIM4_BROKER_SOCKET") != NULL;
+		const bool shared_hevc = !broker && native_hevc && (wave5 || hdr_requested);
 		const char *height_setting = g_getenv("VIM4_OUTPUT_HEIGHT");
 		const uint height = height_setting ? (uint)g_ascii_strtoull(height_setting, NULL, 10) : 0;
 		const char *codec = us_vim4_h265() ? "h265" : "h264";
@@ -190,15 +193,23 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		g_free(scale);
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
-		char *capture = wave5 ? g_strdup_printf("%s height=%u",
-			g_getenv("VIM4_BROKER_SOCKET") ? "vim4brokersrc" : "vim4v4l2src", height) :
-			g_strdup(secondary ? "vim4vdin1src" : "vfmcapsrc");
-		char *description = g_strdup_printf(
-			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
+		char *capture = broker ? g_strdup_printf("vim4brokersrc height=%u ! vim4ptsrate max-rate=%u", height, (output_rate + 50) / 100) :
+			wave5 ? g_strdup_printf("vim4v4l2src height=%u max-fps=%u",
+			height, stream->desired_fps) : g_strdup_printf("%s ! videorate drop-only=true ! "
+			"video/x-raw,framerate=%u/100", secondary ? "vim4vdin1src" : "vfmcapsrc", output_rate);
+		// Keep JPEG work within the existing 60 fps budget when H26x runs faster.
+		const char *jpeg_rate = output_rate > 6000 ? "vim4ptsrate max-rate=60 ! " : "";
+		char *description = wave5 && shared_hevc ? g_strdup_printf(
+			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u height=%u ! "
+			"appsink name=h264 sync=false max-buffers=2 "
+			"encoder.raw ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+			"%svim4pq2sdr ! vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true",
+			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100, height, jpeg_rate, stream->cap->jpeg_quality) : g_strdup_printf(
+			"%s ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
-			"vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
+			"%svim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
 			capture,
-			output_rate, stream->cap->jpeg_quality, encoded);
+			jpeg_rate, stream->cap->jpeg_quality, encoded);
 		g_free(capture);
 		g_free(encoded);
 		GError *error = NULL;
@@ -261,7 +272,7 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			}
 			if (us_get_now_monotonic() - last_rate_check > 0.1) {
 				last_rate_check = us_get_now_monotonic();
-				if (native_hevc && _hdr_requested() != shared_hevc) {
+				if (native_hevc && _hdr_requested() != hdr_requested) {
 					US_LOG_INFO("VIM4 HDR policy changed; rebuilding shared capture");
 					reconfigure = true;
 					break;
@@ -283,12 +294,13 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		// Keep the last image and the transport during a planned rebuild. A
 		// source transition may have raised a bus error before our next poll.
 		if (reconfigure || !_same_input(input, _input_mode()) ||
-			(native_hevc && _hdr_requested() != shared_hevc)) continue;
+			(native_hevc && _hdr_requested() != hdr_requested)) continue;
 		_offline(stream);
 		offline = true;
 		// Back off genuine failures, but wake early when the source changes.
 		for (uint i = 0; i < 10 && !atomic_load(&stream->run->stop); ++i) {
-			if (!_same_input(input, _input_mode())) break;
+			if (!_same_input(input, _input_mode()) ||
+				(native_hevc && _hdr_requested() != hdr_requested)) break;
 			g_usleep(100000);
 		}
 	}

@@ -18,6 +18,8 @@ _SRCS = $(shell ls src/uslibs/*.c src/*.c)
 _BUILD = build
 ifneq ($(MK_WITH_VIM4),)
 override _CFLAGS += -DWITH_VIM4
+override _CFLAGS += $(shell $(PKG_CONFIG) --cflags gstreamer-1.0)
+override _LDFLAGS += $(shell $(PKG_CONFIG) --libs gstreamer-1.0)
 endif
 
 

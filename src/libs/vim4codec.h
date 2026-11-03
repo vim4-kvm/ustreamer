@@ -4,23 +4,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef WITH_VIM4
+#include <gst/gst.h>
+#endif
 
-// Match the shared source's runtime gate without opening capture or encoding.
+// The shared source probes formats, controls and plugins without streaming.
 // Main10 is reserved even for SDR so a global mapping change needs no SDP swap.
 static inline bool us_vim4_main10(void) {
 #ifdef WITH_VIM4
     const char *backend = getenv("VIM4_VIDEO_BACKEND");
-    const char *secondary = getenv("VIM4_SECONDARY_HDMI_CAPTURE");
-    if ((backend && strcmp(backend, "wave5") == 0) || !secondary || strcmp(secondary, "1")) return false;
-    FILE *file = fopen("/sys/module/aml_media/parameters/vdin0_native_hdr", "r");
-    if (!file) return false;
-    int enabled = fgetc(file);
-    fclose(file);
-    file = fopen("/sys/module/vfm_cap/parameters/hdr_metadata_version", "r");
-    if (!file) return false;
-    int version = fgetc(file);
-    fclose(file);
-    return enabled == 'Y' && version == '1';
+    if (!gst_init_check(NULL, NULL, NULL)) return false;
+    GstElement *source = gst_element_factory_make("vim4h265src", NULL);
+    if (!source) return false;
+    gint capable = 0;
+    g_object_get(source, "hdr-capable", &capable, NULL);
+    gst_object_unref(source);
+    // Wave5 has one VDIN owner. JPEG must share its raw pad and tone mapper.
+    GstElementFactory *mapper = gst_element_factory_find("vim4pq2sdr");
+    bool available = !backend || strcmp(backend, "wave5") || mapper;
+    if (mapper) gst_object_unref(mapper);
+    return capable == 1 && available;
 #else
     return false;
 #endif

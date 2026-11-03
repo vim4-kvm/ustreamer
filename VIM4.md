@@ -4,6 +4,9 @@ Build with `make WITH_VIM4=1 WITH_JANUS=1 WITH_PYTHON=1 PY=python3.14` in the
 workspace's ARM64 Ubuntu PiKVM builder. A build without WITH_VIM4 retains the
 upstream V4L2 backend. Clean before changing build flags.
 
+With the Wave5 backend, H.264 and H.265 default to GOP 0. Both disable cyclic
+refresh and emit an IDR on request for a new viewer or after packet loss.
+
 The VIM4 backend in `src/ustreamer/vim4.c` uses the existing vfmcapsrc, amlvenc
 and vim4jpegenc GStreamer plugins. Raw video stays in DMA memory. Encoded frames
 enter the upstream JPEG HTTP ring and JPEG/H.264 memsinks, so kvmd and the Janus
@@ -14,6 +17,16 @@ With `VIM4_VIDEO_BACKEND=wave5`, the common launcher selects `vim4v4l2src` and
 `vim4wave5enc` from the mainline-only plugin directory. The JPEG/memsink/Janus
 interfaces stay the same. Install the matched board runtime and patched V4L2
 plugin together; these factories are distinct from the 5.15 vendor factories.
+
+The P0-5 candidate queries `vim4h265src` for native HDR capability in capture
+and Janus, requiring the GPU tone mapper on Wave5. Native and mapped HEVC then
+share that source's `raw` pad with JPEG: P010/PQ passes through `vim4pq2sdr`,
+while mapped NV12 passes through unchanged. This prevents two capture contexts
+contending for the sole VDIN owner. The raw/JPEG queue is bounded and leaky;
+encoded prediction chains are retained. Janus links GStreamer only for the VIM4
+target to use the same capability contract, not a kernel-name whitelist.
+5.15 keeps its independent VDIN1 JPEG branch. Both GPU stacks and the actual
+PiKVM viewer remain explicit board gates; see the workspace P0-5 record.
 
 Input dimensions follow capture caps. `--desired-fps` limits output without
 duplicating frames; the encoder derives its rate-control budget from negotiated
