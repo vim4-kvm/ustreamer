@@ -196,8 +196,7 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 			height, stream->desired_fps) : g_strdup_printf("%s ! videorate drop-only=true ! "
 			"video/x-raw,framerate=%u/100", secondary ? "vim4vdin1src" : "vfmcapsrc", output_rate);
 		// Keep JPEG work within the existing 60 fps budget when H26x runs faster.
-		const char *jpeg_rate = output_rate > 6000 ? "vim4ptsrate max-rate=60 ! "
-			"video/x-raw,framerate=60/1 ! " : "";
+		const char *jpeg_rate = output_rate > 6000 ? "vim4ptsrate max-rate=60 ! " : "";
 		char *description = wave5 && shared_hevc ? g_strdup_printf(
 			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u height=%u ! "
 			"appsink name=h264 sync=false max-buffers=2 "
