@@ -192,21 +192,23 @@ void us_stream_vim4_loop(us_stream_s *stream) {
 		g_free(scale);
 		// vfm_cap reports variable-rate caps and no buffer duration. videorate
 		// needs explicit output caps to produce valid durations and encoder budgets.
-		char *capture = wave5 ? g_strdup_printf("vim4v4l2src height=%u", height) :
-			g_strdup(secondary ? "vim4vdin1src" : "vfmcapsrc");
+		char *capture = wave5 ? g_strdup_printf("vim4v4l2src height=%u max-fps=%u",
+			height, stream->desired_fps) : g_strdup_printf("%s ! videorate drop-only=true ! "
+			"video/x-raw,framerate=%u/100", secondary ? "vim4vdin1src" : "vfmcapsrc", output_rate);
 		// Keep JPEG work within the existing 60 fps budget when H26x runs faster.
-		const char *jpeg_rate = output_rate > 6000 ? "videorate drop-only=true max-rate=60 ! " : "";
+		const char *jpeg_rate = output_rate > 6000 ? "videorate drop-only=true max-rate=60 ! "
+			"video/x-raw,framerate=60/1 ! " : "";
 		char *description = wave5 && shared_hevc ? g_strdup_printf(
 			"vim4h265src name=encoder bitrate=%u gop=%u framerate=%u height=%u ! "
 			"appsink name=h264 sync=false max-buffers=2 "
 			"encoder.raw ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"%svim4pq2sdr ! vim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true",
 			stream->h264_bitrate, stream->h264_gop, (output_rate + 50) / 100, height, jpeg_rate, stream->cap->jpeg_quality) : g_strdup_printf(
-			"%s ! videorate drop-only=true ! video/x-raw,framerate=%u/100 ! tee name=capture "
+			"%s ! tee name=capture "
 			"capture. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
 			"%svim4jpegenc quality=%u ! appsink name=jpeg sync=false max-buffers=1 drop=true %s",
 			capture,
-			output_rate, jpeg_rate, stream->cap->jpeg_quality, encoded);
+			jpeg_rate, stream->cap->jpeg_quality, encoded);
 		g_free(capture);
 		g_free(encoded);
 		GError *error = NULL;
