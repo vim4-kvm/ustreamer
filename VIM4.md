@@ -4,6 +4,9 @@ Build with `make WITH_VIM4=1 WITH_JANUS=1 WITH_PYTHON=1 PY=python3.14` in the
 workspace's ARM64 Ubuntu PiKVM builder. A build without WITH_VIM4 retains the
 upstream V4L2 backend. Clean before changing build flags.
 
+With the Wave5 backend, H.264 and H.265 default to GOP 0. Both disable cyclic
+refresh and emit an IDR on request for a new viewer or after packet loss.
+
 The VIM4 backend in `src/ustreamer/vim4.c` uses the existing vfmcapsrc, amlvenc
 and vim4jpegenc GStreamer plugins. Raw video stays in DMA memory. Encoded frames
 enter the upstream JPEG HTTP ring and JPEG/H.264 memsinks, so kvmd and the Janus
