@@ -1,86 +1,50 @@
 # VIM4 backend
 
-Build with `make WITH_VIM4=1 WITH_JANUS=1 WITH_PYTHON=1 PY=python3.14` in the
-workspace's ARM64 Ubuntu PiKVM builder. A build without WITH_VIM4 retains the
-upstream V4L2 backend. Clean before changing build flags.
+This page covers PiKVM capture/Janus ownership, recovery and qualification limits.
+Use the workspace service and matched platform plugins; only one application may own capture.
+Read [build](#build-and-interfaces), [capture](#capture-and-recovery), or [HDR](#hdr-and-transport).
+Options, defaults and pool budgets belong to the linked source.
 
-With the Wave5 backend, H.264 and H.265 default to GOP 0. Both disable cyclic
-refresh and emit an IDR on request for a new viewer or after packet loss.
+## Build and interfaces
 
-The VIM4 backend in `src/ustreamer/vim4.c` uses the existing vfmcapsrc, amlvenc
-and vim4jpegenc GStreamer plugins. Raw video stays in DMA memory. Encoded frames
-enter the upstream JPEG HTTP ring and JPEG/H.264 memsinks, so kvmd and the Janus
-plugin retain their established interfaces. Keyframe requests from memsink
-consumers become GStreamer force-key-unit events.
+[Makefile](Makefile) owns flags/dependencies; clean when changing flags.
+Non-VIM4 builds retain upstream capture. Use the workspace ARM64 PiKVM builder.
+[vim4.c](src/ustreamer/vim4.c) retains DMA raw frames and upstream HTTP/memsink interfaces.
+Consumer keyframe requests become force-key-unit events. The compressed memsink keeps its historical name;
+frame fourcc identifies the actual codec.
+Install matched runtime/capture/encoder plugins before applications and use the common launcher,
+which selects backend/plugin paths and coordinates switching.
 
-With `VIM4_VIDEO_BACKEND=wave5`, the common launcher selects `vim4v4l2src` and
-`vim4wave5enc` from the mainline-only plugin directory. The JPEG/memsink/Janus
-interfaces stay the same. Install the matched board runtime and patched V4L2
-plugin together; these factories are distinct from the 5.15 vendor factories.
+## Capture and recovery
 
-The P0-5 candidate queries `vim4h265src` for native HDR capability in capture
-and Janus, requiring the GPU tone mapper on Wave5. Native and mapped HEVC then
-share that source's `raw` pad with JPEG: P010/PQ passes through `vim4pq2sdr`,
-while mapped NV12 passes through unchanged. This prevents two capture contexts
-contending for the sole VDIN owner. The raw/JPEG queue is bounded and leaky;
-encoded prediction chains are retained. Janus links GStreamer only for the VIM4
-target to use the same capability contract, not a kernel-name whitelist.
-5.15 keeps its independent VDIN1 JPEG branch. Both GPU stacks and the actual
-PiKVM viewer remain explicit board gates; see the workspace P0-5 record.
+[vim4.c](src/ustreamer/vim4.c) owns lock checks, rate parsing and restart timing.
+Timing fields can remain stale after signal loss; check RX lock.
+Measured rate jitter is not necessarily a mode change. Use stable capture base rate where available,
+with measured fallback for older receivers. This neither advertises nor qualifies VRR.
+FPS limits drop without duplication; budget is not capture pacing.
 
-Input dimensions follow capture caps. `--desired-fps` limits output without
-duplicating frames; the encoder derives its rate-control budget from negotiated
-caps. The H.264 bitrate range is 1000–60000 kbps. JPEG quality uses the existing
-`--quality` option. The backend does not change EDID, HPD or the board HDMI service.
-Capture errors or missing frames restart the pipeline after releasing its buffers;
-unchanging pixels do not imply a stalled capture.
-On vendor 5.15, cached `hw_info` bit 16 establishes RX lock: timing fields in
-`info` can remain stale during loss. Input geometry, color, depth, EOTF and rate
-are checked every 100 ms; two matching changed observations reopen capture.
-HDMI's centi-Hz measurement can briefly range from 5987 to 5999 on the same
-60 Hz input. A rate change must exceed 1 Hz; isolated loss readings do not
-interrupt live frames. Planned rebuilds retain the transport and skip the
-one-second hardware-failure backoff. Actual missing frames retain the three-second
-watchdog. This reduces application waits but cannot eliminate HDMI resynchronization.
-Before starting vendor encoding, reserve its workspace ahead of JPEG/VDIN1
-allocation and drop the bootstrap after the first encoded frame. Use the matched
-capture plugin's six-buffer physical pool to leave CMA for input reallocation.
-Receivers with `Capture Frame Rate` use that stable base rate for VRR budgets
-and mode-change detection; older kernels keep the measured-rate fallback.
-This does not advertise or qualify VRR. The parser's offline regression runs
-with `python3 tests/test_vim4_rate.py` in a GLib development environment.
+Planned rebuilds retain transport and skip hardware-failure backoff; missing frames retain watchdog recovery.
+Static pixels are not a stall. Software cannot remove HDMI resynchronization waits.
+Release buffers before restart. Reserve vendor encoder workspace before JPEG/capture allocations,
+then transfer ownership after first output. Excess capture buffers can exhaust contiguous memory on reallocation.
+Do not change EDID/HPD or the independent HDMI service.
+Live JPEG publication completes pending snapshots; offline frames retain timeout behavior.
 
-Only one KVM application may own capture and encoding. Run through the workspace
-PiKVM service, which provides plugin paths and coordinates application switching.
-Actual hardware verification is recorded in the workspace bringup log.
+## HDR and transport
 
-The VIM4 build accepts `VIM4_VIDEO_CODEC=h265` in the shared service environment.
-Capture uses amlvenc HEVC and h265parse; Janus advertises HEVC Main and sends
-RFC 7798 single NAL units or fragmentation units, preserving layer and temporal
-IDs. The existing compressed-video memsink retains its `::h264` name for API
-compatibility; each frame carries its actual fourcc. H.264 remains the default.
-`janus/test-rtpv.c` checks packet-size boundaries and reassembly for both codecs.
+Pipeline selection lives in [vim4.c](src/ustreamer/vim4.c).
+Wave5 JPEG borrows the shared HEVC raw pad and tone maps PQ before conversion:
+never open a second capture owner. Bound/leak raw JPEG queues while retaining encoded prediction chains.
+Vendor native HDR keeps independent SDR JPEG; vendor SDR shares capture with HEVC to avoid competing opens.
+Input/policy changes release and rebuild without terminating uStreamer.
 
-On qualified native-HDR 5.15, H.265 instead uses the shared `vim4h265src` and
-Janus advertises Main10. It follows the manager's global HDR-to-SDR preference:
-PQ can retain Main10/BT.2020, while SDR or converted input uses eight-bit HEVC.
-Only native HDR uses an independent VDIN1 JPEG branch. SDR shares one VDIN1
-capture between JPEG and HEVC because two opens would contend for that device.
-An input/preference change
-releases and rebuilds the pipeline without terminating uStreamer. Deploy the
-encoder package providing `vim4-hevc-hdr-api-1` and the common GPU launcher first.
-PiKVM Direct derives profile/level from SPS and presents HDR via a native video
-track where available. Browsers lacking Main10 negotiation receive a clear
-WebRTC compatibility message; H.264 remains available for SDR. Safari remote
-HDR and HLG remain unqualified.
+Deploy matched GPU launcher and codec ABI first.
+[SDP](janus/src/sdp.c) and [RTP](janus/src/rtpv.c) preserve actual HEVC capability and NAL layer/temporal IDs.
+Report Main10 incompatibility clearly; H.264 remains SDR.
+Direct uses SPS profile/level and native video where available.
+Safari remote HDR and HLG are unqualified. Both mainline GPU stacks and the actual PiKVM viewer remain board gates.
 
-VIM4 WebRTC requests immediate video playout through the negotiated RTP
-playout-delay extension (min=0/max=0) on the first packet of each frame, for
-both H.264 and H.265 regardless of GOP length. Janus handles the negotiated
-extension ID; receivers without support retain their own playout policy.
-This does not change encoding quality, GOP, audio, Direct playback or non-VIM4
-builds, and does not imply zero capture-to-display latency.
-
-Publishing a live JPEG frame completes a pending HTTP snapshot request, matching
-the normal JPEG worker. This avoids waiting for the HTTP fallback timeout despite
-fresh frames being available; offline frames still follow the existing timeout.
+[Janus playout](janus/src/plugin.c) requests prompt VIM4 presentation regardless of GOP;
+unsupported receivers retain their policy. It promises no zero latency and does not change audio/Direct.
+Offline regressions: [rate parser](tests/test_vim4_rate.py), [packet boundaries](janus/test-rtpv.c).
+Hardware evidence: workspace [bringup index](https://github.com/vim4-kvm/vim4-kvm/blob/main/docs/bringup/README.md).
